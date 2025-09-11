@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>readdmee</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: 'Comic Neue', cursive;
+    }
+    h1 {
+      transition: transform 0.3s, color 0.3s;
+    }
+    h1:hover {
+      color: #fbbf24;
+      transform: rotate(-3deg) scale(1.1) skewX(2deg);
+    }
+    .github-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 2rem;
+      background: transparent;
+      color: #fff;
+      font-weight: bold;
+      border-radius: 0.5rem;
+      border: 1px solid #fff;
+      transition: transform 0.3s, color 0.3s, rotate 0.3s;
+      cursor: pointer;
+    }
+    .github-btn:hover {
+      color: #fbbf24;
+      transform: rotate(-5deg) scale(1.1) skewY(2deg);
+    }
+    .vercel-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: #fff;
+      color: #000;
+      font-weight: bold;
+      border-radius: 0.5rem;
+      text-decoration: none;
+      font-family: 'Comic Neue', cursive;
+      transition: transform 0.3s, background 0.3s;
+      cursor: pointer;
+    }
+    .vercel-btn svg {
+      fill: #000; /* black icon */
+    }
+    .vercel-btn:hover {
+      background: #fbbf24;
+      color: #000;
+      transform: rotate(-3deg) scale(1.1) skewX(2deg);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center py-10 text-center">
+
+  <h1 class="text-5xl font-bold mb-4">readdmee</h1>
+  <p class="text-gray-300 mb-10 max-w-xl">A repository containing reusable components for developers to include in their GitHub README profiles.</p>
+
+  <a href="https://github.com/USERNAME/README-Components" class="github-btn">
+    <i data-lucide="github"></i>
+    GitHub
+  </a>
+
+  <a href="https://vercel.com" target="_blank" class="vercel-btn">
+    <svg data-testid="geist-icon" height="16" width="16" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M8 1L16 15H0L8 1Z" fill="#000"></path></svg>
+    Powered by Vercel
+  </a>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+    });
+  </script>
+
+</body>
+</html>
