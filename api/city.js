@@ -1,16 +1,13 @@
-const express = require("express");
-const router = express.Router();
+export default async function handler(req, res) {
+  const { city } = req.query;
 
-const weatherIcons = {
-  "☀️": "gold",
-  "🌤️": "orange",
-  "☁️": "lightgray",
-  "🌧️": "skyblue",
-  "❄️": "lightblue",
-};
-
-router.get("/:cityName", async (req, res) => {
-  const city = req.params.cityName;
+  const weatherIcons = {
+    "☀️": "gold",
+    "🌤️": "orange",
+    "☁️": "lightgray",
+    "🌧️": "skyblue",
+    "❄️": "lightblue",
+  };
 
   try {
     const response = await fetch(`https://wttr.in/${city}?format=%t`);
@@ -42,11 +39,9 @@ router.get("/:cityName", async (req, res) => {
 `;
 
     res.setHeader("Content-Type", "image/svg+xml");
-    res.send(svg);
+    res.status(200).send(svg);
   } catch (err) {
     console.error(err);
     res.status(500).send("Error fetching weather data");
   }
-});
-
-module.exports = router;
+}
