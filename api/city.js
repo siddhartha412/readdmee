@@ -1,47 +1,98 @@
-export default async function handler(req, res) {
-  const { city } = req.query;
+const express = require("express");
+const router = express.Router();
 
-  const weatherIcons = {
-    "☀️": "gold",
-    "🌤️": "orange",
-    "☁️": "lightgray",
-    "🌧️": "skyblue",
-    "❄️": "lightblue",
-  };
+let cache = {}; // { cityName: { data, timestamp } }
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
+// Weather icons mapping (expanded but trimmed for API use)
+const weatherIcons = {
+  clear: { icon: "☀️", color: "gold" },
+  partly_cloudy: { icon: "🌤️", color: "orange" },
+  cloudy: { icon: "☁️", color: "lightgray" },
+  overcast: { icon: "☁️", color: "gray" },
+  rain: { icon: "🌧️", color: "skyblue" },
+  snow: { icon: "❄️", color: "white" },
+  thunderstorms: { icon: "⛈️", color: "red" },
+  fog: { icon: "🌫️", color: "silver" },
+  haze: { icon: "🌁", color: "silver" },
+  windy: { icon: "💨", color: "white" },
+  hot: { icon: "🔥", color: "red" },
+  cold: { icon: "❄️", color: "lightblue" },
+  humid: { icon: "💧", color: "skyblue" },
+  dry: { icon: "🏜️", color: "sandybrown" },
+  volcanic_ash: { icon: "🌋", color: "darkred" }
+};
+
+// Map Open-Meteo weather codes → simplified keys
+function mapWeatherCode(code) {
+  if (code === 0) return "clear";
+  if ([1, 2, 3].includes(code)) return "partly_cloudy";
+  if ([45, 48].includes(code)) return "fog";
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "rain";
+  if ([71, 73, 75, 77].includes(code)) return "snow";
+  if ([95, 96, 99].includes(code)) return "thunderstorms";
+  return "clear";
+}
+
+router.get("/:cityName", async (req, res) => {
+  const city = req.params.cityName.toLowerCase();
+
+  // 🔹 Step 1: Check cache
+  if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
+    console.log(`Serving ${city} from cache (API)`);
+    return res.json(cache[city].data);
+  }
 
   try {
-    const response = await fetch(`https://wttr.in/${city}?format=%t`);
-    let temp = (await response.text()).trim();
-    temp = temp.replace("+", "");
-
-    let icon = "☀️";
-    if (temp.includes("°C")) {
-      const t = parseInt(temp.replace("°C", "").trim());
-      if (t <= 5) icon = "❄️";
-      else if (t <= 20) icon = "🌤️";
-      else if (t <= 30) icon = "☀️";
-      else icon = "🌧️";
+    // Step 2: Geocode
+    const geoResp = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}`
+    );
+    const geoData = await geoResp.json();
+    if (!geoData.results || geoData.results.length === 0) {
+      return res.status(404).json({ error: "City not found" });
     }
 
-    const svg = `
-<svg width="300" height="120" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    text { font-family: "Verdana", "DejaVu Sans", sans-serif; }
-  </style>
-  <rect width="300" height="120" rx="15" ry="15" fill="#1e1e1e"/>
-  <text x="150" y="40" font-size="18" font-weight="bold" text-anchor="middle" fill="white">
-    Current Weather in ${city}
-  </text>
-  <text x="150" y="85" font-size="32" text-anchor="middle" fill="${weatherIcons[icon]}">
-    ${temp} ${icon}
-  </text>
-</svg>
-`;
+    const { latitude, longitude, name, country } = geoData.results[0];
 
-    res.setHeader("Content-Type", "image/svg+xml");
-    res.status(200).send(svg);
+    // Step 3: Weather
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`;
+    const weatherResp = await fetch(url);
+    const weatherData = await weatherResp.json();
+
+    if (!weatherData.current_weather) {
+      return res.status(500).json({ error: "No weather data" });
+    }
+
+    const cw = weatherData.current_weather;
+    const conditionKey = mapWeatherCode(cw.weathercode);
+    const iconData = weatherIcons[conditionKey] || { icon: "❓", color: "white" };
+
+    const data = {
+      city: name,
+      country: country,
+      latitude,
+      longitude,
+      temperature: cw.temperature,
+      windspeed: cw.windspeed,
+      weathercode: cw.weathercode,
+      condition: conditionKey,
+      icon: iconData.icon,
+      color: iconData.color,
+      minTemp: weatherData.daily.temperature_2m_min[0],
+      maxTemp: weatherData.daily.temperature_2m_max[0],
+      precipitation: weatherData.daily.precipitation_sum[0],
+      timestamp: new Date().toISOString()
+    };
+
+    // Step 4: Cache
+    cache[city] = { data, timestamp: Date.now() };
+
+    res.json(data);
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error fetching weather data");
+    res.status(500).json({ error: "Error fetching weather" });
   }
-}
+});
+
+module.exports = router;

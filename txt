@@ -1,0 +1,7 @@
++----------------------------+
+| London                23 C |
+| 14 C | 24C  - Partly Cloudy|
+|          Precipitation: 75%|     
+|               Humidity: 66%|
+|               Wind: 18 km/h|
++----------------------------+
