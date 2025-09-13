@@ -4,7 +4,7 @@ const router = express.Router();
 let cache = {}; // { cityName: { data, timestamp } }
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
-// Weather icons mapping (expanded but trimmed for API use)
+// Weather icons mapping
 const weatherIcons = {
   clear: { icon: "☀️", color: "gold" },
   partly_cloudy: { icon: "🌤️", color: "orange" },
@@ -34,13 +34,23 @@ function mapWeatherCode(code) {
   return "clear";
 }
 
+function escapeXml(str = "") {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 router.get("/:cityName", async (req, res) => {
   const city = req.params.cityName.toLowerCase();
 
-  // 🔹 Step 1: Check cache
+  // Step 1: Check cache
   if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
-    console.log(`Serving ${city} from cache (API)`);
-    return res.json(cache[city].data);
+    console.log(`Serving ${city} from cache (SVG)`);
+    res.setHeader("Content-Type", "image/svg+xml");
+    return res.send(cache[city].data);
   }
 
   try {
@@ -50,7 +60,7 @@ router.get("/:cityName", async (req, res) => {
     );
     const geoData = await geoResp.json();
     if (!geoData.results || geoData.results.length === 0) {
-      return res.status(404).json({ error: "City not found" });
+      return res.status(404).send("City not found");
     }
 
     const { latitude, longitude, name, country } = geoData.results[0];
@@ -61,37 +71,45 @@ router.get("/:cityName", async (req, res) => {
     const weatherData = await weatherResp.json();
 
     if (!weatherData.current_weather) {
-      return res.status(500).json({ error: "No weather data" });
+      return res.status(500).send("No weather data");
     }
 
     const cw = weatherData.current_weather;
     const conditionKey = mapWeatherCode(cw.weathercode);
     const iconData = weatherIcons[conditionKey] || { icon: "❓", color: "white" };
 
-    const data = {
-      city: name,
-      country: country,
-      latitude,
-      longitude,
-      temperature: cw.temperature,
-      windspeed: cw.windspeed,
-      weathercode: cw.weathercode,
-      condition: conditionKey,
-      icon: iconData.icon,
-      color: iconData.color,
-      minTemp: weatherData.daily.temperature_2m_min[0],
-      maxTemp: weatherData.daily.temperature_2m_max[0],
-      precipitation: weatherData.daily.precipitation_sum[0],
-      timestamp: new Date().toISOString()
-    };
+    const minTemp = weatherData.daily.temperature_2m_min[0];
+    const maxTemp = weatherData.daily.temperature_2m_max[0];
+    const precipitation = weatherData.daily.precipitation_sum[0];
 
-    // Step 4: Cache
-    cache[city] = { data, timestamp: Date.now() };
+    // Step 4: Build SVG
+    const svg = `
+<svg width="420" height="180" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .city { font-family: Verdana, sans-serif; font-size: 18px; fill: white; font-weight: bold; }
+    .temp { font-family: Verdana, sans-serif; font-size: 18px; font-weight: bold; fill: ${iconData.color}; }
+    .info { font-family: Verdana, sans-serif; font-size: 14px; fill: white; }
+  </style>
 
-    res.json(data);
+  <rect width="420" height="180" rx="15" ry="15" fill="#1e1e1e"/>
+
+  <text x="20" y="35" class="city">${escapeXml(name)}, ${escapeXml(country)}</text>
+  <text x="400" y="35" class="temp" text-anchor="end">${cw.temperature}°C ${iconData.icon}</text>
+
+  <text x="20" y="70" class="info">Min: ${minTemp}°C | Max: ${maxTemp}°C</text>
+  <text x="20" y="100" class="info">Precipitation: ${precipitation} mm</text>
+  <text x="20" y="130" class="info">Wind: ${cw.windspeed} km/h</text>
+</svg>
+    `;
+
+    // Step 5: Cache
+    cache[city] = { data: svg, timestamp: Date.now() };
+
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.send(svg);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error fetching weather" });
+    res.status(500).send("Error fetching weather");
   }
 });
 
