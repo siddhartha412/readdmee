@@ -1,11 +1,12 @@
 {
   "version": 2,
   "builds": [
-    { "src": "index.html", "use": "@vercel/static" },
-    { "src": "api/city.js", "use": "@vercel/node" }
+    { "src": "index.html", "use": "@vercel/static-build" },
+    { "src": "api/*.js", "use": "@vercel/node" }
   ],
   "routes": [
     { "src": "/", "dest": "/index.html" },
-    { "src": "/api/city", "dest": "/api/city.js" }
+    { "src": "/api/city/(.*)", "dest": "/api/city.js" },
+    { "src": "/api/scity/(.*)", "dest": "/api/scity.js" }
   ]
 }
