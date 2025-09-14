@@ -12,15 +12,20 @@ function escapeXml(str = "") {
 
 // Map weather codes → fun message
 function funMessage(code) {
-  if (code === 0) return "Clear skies 🌞";
-  if ([1, 2, 3].includes(code)) return "A bit cloudy ☁️";
-  if ([45, 48].includes(code)) return "Foggy 🌫️";
+  if (code === 0) return "Clear skies 🌞 | Perfect day to go outside!";
+  if ([1, 2, 3].includes(code))
+    return "A bit cloudy ☁️ | The sun is playing hide & seek.";
+  if ([45, 48].includes(code))
+    return "Foggy 🌫️ | Drive safe, the world looks mysterious today.";
   if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code))
-    return "Rainy 🌧️";
-  if ([71, 73, 75, 77].includes(code)) return "Snow ❄️";
-  if ([95, 96, 99].includes(code)) return "Thunder ⚡";
-  return "Weather looks fine!";
+    return "Rainy 🌧️ | Grab an umbrella ☔ or dance in the rain!";
+  if ([71, 73, 75, 77].includes(code))
+    return "Snow ❄️ | Time for hot chocolate & cozy vibes.";
+  if ([95, 96, 99].includes(code))
+    return "Thunder ⚡ | Stay indoors, nature is putting on a show.";
+  return "Weather looks fine! 🌍 | Enjoy the moment.";
 }
+
 
 // Cache (lives only while serverless instance is warm)
 let cache = {};
