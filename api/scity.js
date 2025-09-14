@@ -1,4 +1,11 @@
-// api/scity.js
+const express = require("express");
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
+const app = express();
+
+// In-memory cache
+let cache = {}; // { cityName: { data, timestamp } }
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
 // Escape XML safely
 function escapeXml(str = "") {
@@ -10,51 +17,32 @@ function escapeXml(str = "") {
     .replace(/'/g, "&apos;");
 }
 
-// Map weather codes → fun message
+// Map weather codes → fun messages
 function funMessage(code) {
-  if (code === 0) return "Clear skies 🌞 | Perfect day to go outside!";
-  if ([1, 2, 3].includes(code))
-    return "A bit cloudy ☁️ | The sun is playing hide & seek.";
-  if ([45, 48].includes(code))
-    return "Foggy 🌫️ | Drive safe, the world looks mysterious today.";
+  if (code === 0) return "Clear skies 🌞 | Perfect day to head out!";
+  if ([1, 2, 3].includes(code)) return "A bit cloudy ☁️ | But still chill vibes.";
+  if ([45, 48].includes(code)) return "Foggy 🌫️ | Drive safe and keep it slow!";
   if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code))
     return "Rainy 🌧️ | Grab an umbrella ☔ or dance in the rain!";
   if ([71, 73, 75, 77].includes(code))
-    return "Snow ❄️ | Time for hot chocolate & cozy vibes.";
+    return "Snow ❄️ | Build a snowman ⛄ and enjoy!";
   if ([95, 96, 99].includes(code))
-    return "Thunder ⚡ | Stay indoors, nature is putting on a show.";
-  return "Weather looks fine! 🌍 | Enjoy the moment.";
+    return "Thunder ⚡ | Stay cozy indoors with a warm drink!";
+  return "Weather looks fine! ✨";
 }
 
+app.get("/api/scity/:cityName", async (req, res) => {
+  const city = req.params.cityName.toLowerCase();
 
-// Cache (lives only while serverless instance is warm)
-let cache = {};
-const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+  // 🔹 Step 1: Check cache
+  if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
+    console.log(`Serving ${city} from cache (scity)`);
+    res.setHeader("Content-Type", "image/svg+xml");
+    return res.send(cache[city].data);
+  }
 
-export default async function handler(req, res) {
   try {
-    // Support both `/api/scity/Baruipur` and `/api/scity?cityName=Baruipur`
-    let cityName = "";
-    const urlParts = req.url.split("/");
-    if (urlParts.length > 2) {
-      cityName = urlParts.pop();
-    }
-    if (!cityName) {
-      cityName = req.query.cityName;
-    }
-    if (!cityName) {
-      return res.status(400).send("City name required");
-    }
-
-    const city = decodeURIComponent(cityName).toLowerCase();
-
-    // 🔹 Step 1: Cache check
-    if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
-      res.setHeader("Content-Type", "image/svg+xml");
-      return res.status(200).send(cache[city].data);
-    }
-
-    // 🔹 Step 2: Geocode
+    // Step 2: Geocode city → lat/lon
     const geoResp = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
         city
@@ -64,13 +52,20 @@ export default async function handler(req, res) {
     if (!geoData.results || geoData.results.length === 0) {
       return res.status(404).send("City not found");
     }
+
     const { latitude, longitude, name, country } = geoData.results[0];
 
-    // 🔹 Step 3: Weather
-    const weatherResp = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&timezone=auto`
-    );
+    // ✅ Avoid "India, India"
+    let locationLabel = name;
+    if (country && country.toLowerCase() !== name.toLowerCase()) {
+      locationLabel += `, ${country}`;
+    }
+
+    // Step 3: Weather
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&timezone=auto`;
+    const weatherResp = await fetch(url);
     const weatherData = await weatherResp.json();
+
     if (!weatherData.current_weather) {
       return res.status(500).send("No weather data");
     }
@@ -79,7 +74,7 @@ export default async function handler(req, res) {
     const temp = cw.temperature;
     const message = funMessage(cw.weathercode);
 
-    // 🔹 Step 4: SVG card
+    // Step 4: Compact SVG
     const svg = `
 <svg width="420" height="120" xmlns="http://www.w3.org/2000/svg">
   <style>
@@ -90,20 +85,22 @@ export default async function handler(req, res) {
 
   <rect width="420" height="120" rx="15" ry="15" fill="#1e1e1e"/>
 
-  <text x="20" y="35" class="city">${escapeXml(name)}, ${escapeXml(country)}</text>
+  <text x="20" y="35" class="city">${escapeXml(locationLabel)}</text>
   <text x="400" y="35" class="temp" text-anchor="end">${temp}°C</text>
 
   <text x="20" y="75" class="info">${escapeXml(message)}</text>
 </svg>
     `;
 
-    // 🔹 Step 5: Cache result
+    // Step 5: Cache result
     cache[city] = { data: svg, timestamp: Date.now() };
 
     res.setHeader("Content-Type", "image/svg+xml");
-    return res.status(200).send(svg);
+    res.send(svg);
   } catch (err) {
-    console.error("Error in /api/scity:", err);
-    return res.status(500).send("Error fetching weather");
+    console.error(err);
+    res.status(500).send("Error fetching weather");
   }
-}
+});
+
+module.exports = app;
