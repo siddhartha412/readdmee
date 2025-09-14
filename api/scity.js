@@ -1,8 +1,5 @@
 // api/scity.js
 
-let cache = {}; // { cityName: { data, timestamp } }
-const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-
 // Escape XML safely
 function escapeXml(str = "") {
   return str
@@ -13,7 +10,7 @@ function escapeXml(str = "") {
     .replace(/'/g, "&apos;");
 }
 
-// Fun message
+// Map weather codes → fun message
 function funMessage(code) {
   if (code === 0) return "Clear skies 🌞";
   if ([1, 2, 3].includes(code)) return "A bit cloudy ☁️";
@@ -25,39 +22,50 @@ function funMessage(code) {
   return "Weather looks fine!";
 }
 
+// Cache (lives only while serverless instance is warm)
+let cache = {};
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
 export default async function handler(req, res) {
-  const { cityName } = req.query;
-
-  if (!cityName) {
-    return res.status(400).send("cityName is required");
-  }
-
-  const city = cityName.toLowerCase();
-
-  // Check cache
-  if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
-    res.setHeader("Content-Type", "image/svg+xml");
-    return res.status(200).send(cache[city].data);
-  }
-
   try {
-    // Geocode
+    // Support both `/api/scity/Baruipur` and `/api/scity?cityName=Baruipur`
+    let cityName = "";
+    const urlParts = req.url.split("/");
+    if (urlParts.length > 2) {
+      cityName = urlParts.pop();
+    }
+    if (!cityName) {
+      cityName = req.query.cityName;
+    }
+    if (!cityName) {
+      return res.status(400).send("City name required");
+    }
+
+    const city = decodeURIComponent(cityName).toLowerCase();
+
+    // 🔹 Step 1: Cache check
+    if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
+      res.setHeader("Content-Type", "image/svg+xml");
+      return res.status(200).send(cache[city].data);
+    }
+
+    // 🔹 Step 2: Geocode
     const geoResp = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}`
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+        city
+      )}`
     );
     const geoData = await geoResp.json();
-
     if (!geoData.results || geoData.results.length === 0) {
       return res.status(404).send("City not found");
     }
-
     const { latitude, longitude, name, country } = geoData.results[0];
 
-    // Weather
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&timezone=auto`;
-    const weatherResp = await fetch(url);
+    // 🔹 Step 3: Weather
+    const weatherResp = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&timezone=auto`
+    );
     const weatherData = await weatherResp.json();
-
     if (!weatherData.current_weather) {
       return res.status(500).send("No weather data");
     }
@@ -66,7 +74,7 @@ export default async function handler(req, res) {
     const temp = cw.temperature;
     const message = funMessage(cw.weathercode);
 
-    // Build SVG
+    // 🔹 Step 4: SVG card
     const svg = `
 <svg width="420" height="120" xmlns="http://www.w3.org/2000/svg">
   <style>
@@ -81,15 +89,16 @@ export default async function handler(req, res) {
   <text x="400" y="35" class="temp" text-anchor="end">${temp}°C</text>
 
   <text x="20" y="75" class="info">${escapeXml(message)}</text>
-</svg>`;
+</svg>
+    `;
 
-    // Cache
+    // 🔹 Step 5: Cache result
     cache[city] = { data: svg, timestamp: Date.now() };
 
     res.setHeader("Content-Type", "image/svg+xml");
-    res.status(200).send(svg);
+    return res.status(200).send(svg);
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Error fetching weather");
+    console.error("Error in /api/scity:", err);
+    return res.status(500).send("Error fetching weather");
   }
 }
