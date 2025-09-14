@@ -1,6 +1,9 @@
 const express = require("express");
 const router = express.Router();
 
+// Fix fetch for Node.js 16 (works on Node 18+ too)
+const fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
+
 let cache = {}; // { cityName: { data, timestamp } }
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
