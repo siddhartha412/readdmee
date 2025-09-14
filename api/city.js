@@ -1,4 +1,4 @@
-const fetch = require("node-fetch");
+
 
 let cache = {}; // { cityName: { data, timestamp } }
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
