@@ -1,4 +1,6 @@
-
+// Enable fetch in CommonJS for Vercel/Node
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 let cache = {}; // { cityName: { data, timestamp } }
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
@@ -27,12 +29,14 @@ function mapWeatherCode(code) {
   if (code === 0) return "clear";
   if ([1, 2, 3].includes(code)) return "partly_cloudy";
   if ([45, 48].includes(code)) return "fog";
-  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "rain";
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code))
+    return "rain";
   if ([71, 73, 75, 77].includes(code)) return "snow";
   if ([95, 96, 99].includes(code)) return "thunderstorms";
   return "clear";
 }
 
+// Escape XML safely for SVG text
 function escapeXml(str = "") {
   return str
     .replace(/&/g, "&amp;")
@@ -44,7 +48,7 @@ function escapeXml(str = "") {
 
 module.exports = async (req, res) => {
   try {
-    // Extract city name
+    // Extract city from URL
     const parts = req.url.split("/");
     const city = decodeURIComponent(parts.pop() || "").toLowerCase();
 
@@ -52,15 +56,18 @@ module.exports = async (req, res) => {
       return res.status(400).send("City name required");
     }
 
-    // Check cache
+    // 🔹 Check cache
     if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
+      console.log(`Serving ${city} from cache (city)`);
       res.setHeader("Content-Type", "image/svg+xml");
       return res.send(cache[city].data);
     }
 
     // Step 1: Geocode
     const geoResp = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}`
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+        city
+      )}`
     );
     const geoData = await geoResp.json();
     if (!geoData.results || geoData.results.length === 0) {
@@ -68,6 +75,12 @@ module.exports = async (req, res) => {
     }
 
     const { latitude, longitude, name, country } = geoData.results[0];
+
+    // ✅ Avoid "India, India"
+    let locationLabel = name;
+    if (country && country.toLowerCase() !== name.toLowerCase()) {
+      locationLabel += `, ${country}`;
+    }
 
     // Step 2: Weather
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`;
@@ -97,7 +110,7 @@ module.exports = async (req, res) => {
 
   <rect width="420" height="180" rx="15" ry="15" fill="#1e1e1e"/>
 
-  <text x="20" y="35" class="city">${escapeXml(name)}, ${escapeXml(country)}</text>
+  <text x="20" y="35" class="city">${escapeXml(locationLabel)}</text>
   <text x="400" y="35" class="temp" text-anchor="end">${cw.temperature}°C ${iconData.icon}</text>
 
   <text x="20" y="70" class="info">Min: ${minTemp}°C | Max: ${maxTemp}°C</text>
