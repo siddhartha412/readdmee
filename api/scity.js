@@ -1,5 +1,4 @@
-const express = require("express");
-const router = express.Router();
+// api/scity.js
 
 let cache = {}; // { cityName: { data, timestamp } }
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
@@ -14,43 +13,47 @@ function escapeXml(str = "") {
     .replace(/'/g, "&apos;");
 }
 
-// Map weather codes → fun message
+// Fun message
 function funMessage(code) {
-  if (code === 0) return "Clear skies all fine! 🌞";
-  if ([1, 2, 3].includes(code)) return "A bit cloudy chilling outdoors! ☁️";
-  if ([45, 48].includes(code)) return "I cant see any thing , it is too Foggy 🌫️";
+  if (code === 0) return "Clear skies 🌞";
+  if ([1, 2, 3].includes(code)) return "A bit cloudy ☁️";
+  if ([45, 48].includes(code)) return "Foggy 🌫️";
   if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code))
-    return "Yayy it is Rainy 🌧️!!";
+    return "Rainy 🌧️";
   if ([71, 73, 75, 77].includes(code)) return "Snow ❄️";
-  if ([95, 96, 99].includes(code)) return "Oh hooo!! It is Thunder ⚡";
+  if ([95, 96, 99].includes(code)) return "Thunder ⚡";
   return "Weather looks fine!";
 }
 
-router.get("/:cityName", async (req, res) => {
-  const city = req.params.cityName.toLowerCase();
+export default async function handler(req, res) {
+  const { cityName } = req.query;
 
-  // 🔹 Step 1: Check cache
+  if (!cityName) {
+    return res.status(400).send("cityName is required");
+  }
+
+  const city = cityName.toLowerCase();
+
+  // Check cache
   if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
-    console.log(`Serving ${city} from cache (scity)`);
     res.setHeader("Content-Type", "image/svg+xml");
-    return res.send(cache[city].data);
+    return res.status(200).send(cache[city].data);
   }
 
   try {
-    // Step 2: Geocode
+    // Geocode
     const geoResp = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
-        city
-      )}`
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}`
     );
     const geoData = await geoResp.json();
+
     if (!geoData.results || geoData.results.length === 0) {
       return res.status(404).send("City not found");
     }
 
     const { latitude, longitude, name, country } = geoData.results[0];
 
-    // Step 3: Weather
+    // Weather
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&timezone=auto`;
     const weatherResp = await fetch(url);
     const weatherData = await weatherResp.json();
@@ -63,7 +66,7 @@ router.get("/:cityName", async (req, res) => {
     const temp = cw.temperature;
     const message = funMessage(cw.weathercode);
 
-    // Step 4: Compact SVG
+    // Build SVG
     const svg = `
 <svg width="420" height="120" xmlns="http://www.w3.org/2000/svg">
   <style>
@@ -78,18 +81,15 @@ router.get("/:cityName", async (req, res) => {
   <text x="400" y="35" class="temp" text-anchor="end">${temp}°C</text>
 
   <text x="20" y="75" class="info">${escapeXml(message)}</text>
-</svg>
-    `;
+</svg>`;
 
-    // Step 5: Cache result
+    // Cache
     cache[city] = { data: svg, timestamp: Date.now() };
 
     res.setHeader("Content-Type", "image/svg+xml");
-    res.send(svg);
+    res.status(200).send(svg);
   } catch (err) {
     console.error(err);
     res.status(500).send("Error fetching weather");
   }
-});
-
-module.exports = router;
+}
