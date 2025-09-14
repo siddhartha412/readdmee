@@ -1,12 +1,4 @@
-const express = require("express");
-const app = express();
-const router = express.Router();
-
-// Fix fetch for Node <18 (you’re on Node 22 locally, so native fetch works, 
-// but Vercel may run Node 16/18 depending on your settings)
-const fetchFn = global.fetch || ((...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args))
-);
+const fetch = require("node-fetch");
 
 let cache = {}; // { cityName: { data, timestamp } }
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
@@ -27,10 +19,10 @@ const weatherIcons = {
   cold: { icon: "❄️", color: "lightblue" },
   humid: { icon: "💧", color: "skyblue" },
   dry: { icon: "🏜️", color: "sandybrown" },
-  volcanic_ash: { icon: "🌋", color: "darkred" },
+  volcanic_ash: { icon: "🌋", color: "darkred" }
 };
 
-// Map weather codes → simplified keys
+// Map Open-Meteo weather codes → simplified keys
 function mapWeatherCode(code) {
   if (code === 0) return "clear";
   if ([1, 2, 3].includes(code)) return "partly_cloudy";
@@ -50,19 +42,24 @@ function escapeXml(str = "") {
     .replace(/'/g, "&apos;");
 }
 
-router.get("/:cityName", async (req, res) => {
-  const city = req.params.cityName.toLowerCase();
-
-  // Serve from cache
-  if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
-    console.log(`Serving ${city} from cache`);
-    res.setHeader("Content-Type", "image/svg+xml");
-    return res.send(cache[city].data);
-  }
-
+module.exports = async (req, res) => {
   try {
-    // Geocode
-    const geoResp = await fetchFn(
+    // Extract city name
+    const parts = req.url.split("/");
+    const city = decodeURIComponent(parts.pop() || "").toLowerCase();
+
+    if (!city) {
+      return res.status(400).send("City name required");
+    }
+
+    // Check cache
+    if (cache[city] && Date.now() - cache[city].timestamp < CACHE_DURATION) {
+      res.setHeader("Content-Type", "image/svg+xml");
+      return res.send(cache[city].data);
+    }
+
+    // Step 1: Geocode
+    const geoResp = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}`
     );
     const geoData = await geoResp.json();
@@ -72,9 +69,9 @@ router.get("/:cityName", async (req, res) => {
 
     const { latitude, longitude, name, country } = geoData.results[0];
 
-    // Weather
+    // Step 2: Weather
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`;
-    const weatherResp = await fetchFn(url);
+    const weatherResp = await fetch(url);
     const weatherData = await weatherResp.json();
 
     if (!weatherData.current_weather) {
@@ -89,7 +86,7 @@ router.get("/:cityName", async (req, res) => {
     const maxTemp = weatherData.daily.temperature_2m_max[0];
     const precipitation = weatherData.daily.precipitation_sum[0];
 
-    // Build SVG
+    // Step 3: Build SVG
     const svg = `
 <svg width="420" height="180" xmlns="http://www.w3.org/2000/svg">
   <style>
@@ -109,7 +106,7 @@ router.get("/:cityName", async (req, res) => {
 </svg>
     `;
 
-    // Cache result
+    // Save to cache
     cache[city] = { data: svg, timestamp: Date.now() };
 
     res.setHeader("Content-Type", "image/svg+xml");
@@ -118,9 +115,4 @@ router.get("/:cityName", async (req, res) => {
     console.error(err);
     res.status(500).send("Error fetching weather");
   }
-});
-
-app.use("/", router);
-
-// ✅ Vercel expects an Express app
-module.exports = app;
+};
